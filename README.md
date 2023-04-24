@@ -9,7 +9,7 @@ python DistributeFoldX.py Phase1 MyPrecious.pdb MyPreciousSelection.tab 100 /hom
 ```
 or 
 ```
-python DistributeRosettaddg.py Phase1 DimerParsedForRosetta.pdb DimerSelection.tab 100 FLAGrow3 /home/wijma/mini20101104/mini/bin/fix_bb_monomer_ddg.linuxgccrelease
+python DistributeRosettaddg.py Phase1 MyPrecious.pdb MyPreciousSelection.tab 100 FLAGrow3 /home/wijma/mini20101104/mini/bin/fix_bb_monomer_ddg.linuxgccrelease
 ```
 
 This should PREPARE mutations of MyPrecious.pdb for residues specified in the File MyPreciousSelection.tab and 
@@ -17,6 +17,10 @@ distribute them over directories with each a 100 different mutations. For the se
 
 ```
 python DistributeFoldX.py Phase2 MyPrecious.pdb -5
+```
+or 
+```
+python DistributeRosetta.py Phase2 MyPrecious.pdb -5
 ```
 
 This should COLLECT the mutations of MyPrecious.pdb assuming a cutoff of -5 KJ mol-1,resulting in FOUR lists:
