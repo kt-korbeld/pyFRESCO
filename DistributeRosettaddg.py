@@ -201,6 +201,19 @@ def FindBestPerPos(mutationlist, energylist):
     # return list of best per residue
     return bestperpos_out
 
+def tryint(s):
+    try:
+        return int(s)
+    except:
+        return s
+
+def alphanum_key(s):
+    ''' 
+    Turn a string into a list of string and number chunks.
+        "z23a" -> ["z", 23, "a"]
+    '''
+    return [ tryint(c) for c in re.split('([0-9]+)', s) ]
+
 # ====================check and assign all arguments in the command line to variables===================================
 # ======================================================================================================================
 # print example use
@@ -423,7 +436,7 @@ if WhichPhaseAreWeIn == 'Phase2':
     # get list of directories
     Directory_list = os.listdir('.')
     Directory_list = [i for i in Directory_list if re.match('Subdirectory[1-9]+', i)]
-    Directory_list.sort()
+    Directory_list.sort(key=alphanum_key)
     print('Found {} Subdirectories'.format(len(Directory_list)))
     if len(Directory_list) > 0:
         DirectoriesPresent = True
