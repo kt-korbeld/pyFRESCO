@@ -470,9 +470,9 @@ if WhichPhaseAreWeIn == 'Phase2' and DirectoriesPresent:
         # write both to file
         header = 'Below are the mutations and the change in stability and SD from 5 calculations, all in kJ mol -1'
         np.savetxt('MutationEnergies_'+name+'.tab', fullarray,
-                   fmt="%s", delimiter='\t', header=header, comments='')
+                   fmt='%s%9s%9s', header=header, comments='')
         np.savetxt('MutationEnergies_'+name+'_SortedByEnergy.tab', fullarraysorted,
-                   fmt='%s', delimiter='\t', header=header, comments='')
+                   fmt='%s%9s%9s', header=header, comments='')
 
     NumberOfMutationsCollectedBelowCutOff = len(BelowCutoff)
     NumberOfMutationsCollectedPerPosition = len(BestPerPos)
