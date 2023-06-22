@@ -368,7 +368,8 @@ if WhichPhaseAreWeIn == 'Phase1':
 
     #decide on how many subdirectories to make
     NumberOfSubdirectories = int(NumberOfMutations/int(MutationsPerDirectory))
-    if NumberOfMutations % MutationsPerDirectory != 0:
+    NumberInLastDirectory = NumberOfMutations % MutationsPerDirectory
+    if NumberInLastDirectory != 0:
         NumberOfSubdirectories +=1
     print('With maximum {} mutations per subdirectory this requires {} directories'.format(MutationsPerDirectory,
            NumberOfSubdirectories))
@@ -392,10 +393,13 @@ if WhichPhaseAreWeIn == 'Phase1':
         with open(os.path.join(Subdirectory_name, 'list.txt'), "w") as pdblist:
             pdblist.write(NamePDBFile)
 
-        # create 'individual_list.txt file with list of mutants
+        # create 'RosettaFormatMutations.mut file with list of mutants
         with open(os.path.join(Subdirectory_name, 'RosettaFormatMutations.mut'), "w") as mutlist:
             # write total number of mutations to file
-            mutlist.write('total {}\n'.format(len(Strands)*MutationsPerDirectory))
+            if directory_nr == NumberOfSubdirectories:
+                mutlist.write('total {}\n'.format(len(Strands)*NumberInLastDirectory))
+            else:
+                mutlist.write('total {}\n'.format(len(Strands)*MutationsPerDirectory))
             #for loop going over each mutation
             for mut in MutatedProteinList[StartMutationRange:EndMutationRange]:
                 # subtract the start from the residue number to get new residue numbers
