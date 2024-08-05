@@ -107,7 +107,7 @@ def ReadTabFile(tabfile):
     # shorten to just the sequence, skipping first line and stopping at first END
     TabContents = TabContents[1:TabContents.index('END')]
     # split entries to nested list, then turn into 2d array
-    return np.array([res.split(' ') for res in TabContents])
+    return np.array([res.strip().split(' ') for res in TabContents])
 
 
 def ReadStrandStart(pdbname, strands):
