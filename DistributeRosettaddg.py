@@ -133,6 +133,18 @@ def ReadStrandStart(pdbname, strands):
     return strandstarts
 
 
+def PoseNumbers(resnr, strandstarts):
+    '''
+    map an original residue number onto Rosetta pose numbering, once per chain.
+    in the renumbered pdb chain k begins at pose (start_k - start_1 + 1), and the
+    residue sits (resnr - start_1) residues into that chain, so its pose number is
+    resnr + start_k - 2*start_1 + 1.
+    for the first chain this reduces to the familiar resnr - start_1 + 1.
+    '''
+    first = int(strandstarts[0])
+    return [int(resnr) + int(start) - 2*first + 1 for start in strandstarts]
+
+
 def PurgeSequence(sequence, selection1, selection2):
     '''
     Takes in a sequence read from .tab using ReadTabFile(), (np.array)
@@ -369,6 +381,14 @@ if WhichPhaseAreWeIn == 'Phase1':
     NumberOfMutations = len(MutatedProteinList)
     print('The number of mutations is: ', NumberOfMutations)
 
+    # a mis-specified chain start silently produces out-of-range pose numbers, so check
+    # the whole set up front rather than writing unusable .mut files
+    LowestPose = min(pose for mut in MutatedProteinList for pose in PoseNumbers(mut[1], Strandstarts))
+    CheckError(LowestPose < 1,
+               'chain starts {} give pose number {} for at least one mutation. the start given for each '
+               'chain must be the residue number at which that chain begins in the renumbered pdb passed '
+               'to Rosetta'.format(list(Strandstarts), LowestPose))
+
     #decide on how many subdirectories to make
     NumberOfSubdirectories = int(NumberOfMutations/int(MutationsPerDirectory))
     NumberInLastDirectory = NumberOfMutations % MutationsPerDirectory
@@ -407,8 +427,8 @@ if WhichPhaseAreWeIn == 'Phase1':
             mutlist.write('total {}\n'.format(len(Strands)*len(MutationsHere)))
             #for loop going over each mutation
             for mut in MutationsHere:
-                # subtract the start from the residue number to get new residue numbers
-                newres = [str(int(mut[1])-int(start)+1) for start in Strandstarts]
+                # map the residue number onto Rosetta pose numbering, once per chain
+                newres = [str(pose) for pose in PoseNumbers(mut[1], Strandstarts)]
                 # for mutation 'K4E' with 3 subunits starting at 2, make [3, 'K 3 E', 'K 3 E', 'K 3 E']
                 mutlines = [str(len(Strands))+'\n']
                 mutlines += [' '.join([mut[0], res, mut[2], '\n']) for res in newres]
@@ -418,8 +438,8 @@ if WhichPhaseAreWeIn == 'Phase1':
         with open(os.path.join(Subdirectory_name, 'List_Mutations_readable.txt'), "w") as readlist:
             #for loop going over each mutation
             for mut in MutationsHere:
-                # subtract the start from the residue number to get new residue numbers
-                newres = [str(int(mut[1])-int(start)+1) for start in Strandstarts]
+                # map the residue number onto Rosetta pose numbering, once per chain
+                newres = [str(pose) for pose in PoseNumbers(mut[1], Strandstarts)]
                 # for mutation 'K4E' with 3 subunits starting at 2, make 'K3EK3EK3E is K 4 E'
                 newmuts = ''.join([mut[0]+start+mut[2] for start in newres])
                 oldmut = ' '.join(mut)
