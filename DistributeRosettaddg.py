@@ -133,6 +133,18 @@ def ReadStrandStart(pdbname, strands):
     return strandstarts
 
 
+def PoseNumbers(resnr, strandstarts):
+    '''
+    map an original residue number onto Rosetta pose numbering, once per chain.
+    in the renumbered pdb chain k begins at pose (start_k - start_1 + 1), and the
+    residue sits (resnr - start_1) residues into that chain, so its pose number is
+    resnr + start_k - 2*start_1 + 1.
+    for the first chain this reduces to the familiar resnr - start_1 + 1.
+    '''
+    first = int(strandstarts[0])
+    return [int(resnr) + int(start) - 2*first + 1 for start in strandstarts]
+
+
 def PurgeSequence(sequence, selection1, selection2):
     '''
     Takes in a sequence read from .tab using ReadTabFile(), (np.array)
@@ -188,16 +200,19 @@ def FindBestPerPos(mutationlist, energylist):
     for ind, (mut, kj) in enumerate(zip(mutationlist, energylist)):
         # only take relevant part
         mut = mut[0:-1]
-        # if this is new residue or last entry, save index of current best
-        if mut != currentres or ind == len(energylist) - 1:
+        # if this is a new residue, save the index of the best of the previous one
+        if mut != currentres:
             # skip if no best residue has yet been saved
-            if not (currentres == '' or currentbest == ''):
+            if currentbest != '':
                 bestperpos_out.append(currentbest[0])
             currentres = mut
             currentbest = [ind, kj]
         # if this is the same residue, check if new mutation is better than best
         elif kj < currentbest[-1]:
             currentbest = [ind, kj]
+    # flush the final position, which has no following residue to trigger the append
+    if currentbest != '':
+        bestperpos_out.append(currentbest[0])
     # return list of best per residue
     return bestperpos_out
 
@@ -366,6 +381,14 @@ if WhichPhaseAreWeIn == 'Phase1':
     NumberOfMutations = len(MutatedProteinList)
     print('The number of mutations is: ', NumberOfMutations)
 
+    # a mis-specified chain start silently produces out-of-range pose numbers, so check
+    # the whole set up front rather than writing unusable .mut files
+    LowestPose = min(pose for mut in MutatedProteinList for pose in PoseNumbers(mut[1], Strandstarts))
+    CheckError(LowestPose < 1,
+               'chain starts {} give pose number {} for at least one mutation. the start given for each '
+               'chain must be the residue number at which that chain begins in the renumbered pdb passed '
+               'to Rosetta'.format(list(Strandstarts), LowestPose))
+
     #decide on how many subdirectories to make
     NumberOfSubdirectories = int(NumberOfMutations/int(MutationsPerDirectory))
     NumberInLastDirectory = NumberOfMutations % MutationsPerDirectory
@@ -393,17 +416,19 @@ if WhichPhaseAreWeIn == 'Phase1':
         with open(os.path.join(Subdirectory_name, 'list.txt'), "w") as pdblist:
             pdblist.write(NamePDBFile)
 
+        # the mutations that actually land in this directory. deriving the 'total'
+        # header from the slice keeps it correct in every case, including when the
+        # mutations divide evenly over the directories
+        MutationsHere = MutatedProteinList[StartMutationRange:EndMutationRange]
+
         # create 'RosettaFormatMutations.mut file with list of mutants
         with open(os.path.join(Subdirectory_name, 'RosettaFormatMutations.mut'), "w") as mutlist:
             # write total number of mutations to file
-            if directory_nr == NumberOfSubdirectories:
-                mutlist.write('total {}\n'.format(len(Strands)*NumberInLastDirectory))
-            else:
-                mutlist.write('total {}\n'.format(len(Strands)*MutationsPerDirectory))
+            mutlist.write('total {}\n'.format(len(Strands)*len(MutationsHere)))
             #for loop going over each mutation
-            for mut in MutatedProteinList[StartMutationRange:EndMutationRange]:
-                # subtract the start from the residue number to get new residue numbers
-                newres = [str(int(mut[1])-int(start)+1) for start in Strandstarts]
+            for mut in MutationsHere:
+                # map the residue number onto Rosetta pose numbering, once per chain
+                newres = [str(pose) for pose in PoseNumbers(mut[1], Strandstarts)]
                 # for mutation 'K4E' with 3 subunits starting at 2, make [3, 'K 3 E', 'K 3 E', 'K 3 E']
                 mutlines = [str(len(Strands))+'\n']
                 mutlines += [' '.join([mut[0], res, mut[2], '\n']) for res in newres]
@@ -412,9 +437,9 @@ if WhichPhaseAreWeIn == 'Phase1':
         # create 'List_Mutations_readable.txt' with list of mutants
         with open(os.path.join(Subdirectory_name, 'List_Mutations_readable.txt'), "w") as readlist:
             #for loop going over each mutation
-            for mut in MutatedProteinList[StartMutationRange:EndMutationRange]:
-                # subtract the start from the residue number to get new residue numbers
-                newres = [str(int(mut[1])-int(start)+1) for start in Strandstarts]
+            for mut in MutationsHere:
+                # map the residue number onto Rosetta pose numbering, once per chain
+                newres = [str(pose) for pose in PoseNumbers(mut[1], Strandstarts)]
                 # for mutation 'K4E' with 3 subunits starting at 2, make 'K3EK3EK3E is K 4 E'
                 newmuts = ''.join([mut[0]+start+mut[2] for start in newres])
                 oldmut = ' '.join(mut)
@@ -480,29 +505,49 @@ if WhichPhaseAreWeIn == 'Phase2' and DirectoriesPresent:
             print('{} is empty'.format(Energyfile))
             continue
 
-        # skip first line, get Energy entries from the energy file, and convert energy from kcal/mol to kj/mol
-        Energylist = np.array([line.split()[2] for line in Energylist[1:] if 'ddG' in line])
-        Energylist = Energylist.astype(float)*4.1840
-        # format entries in mutation list from '1 K 4 E to 'K4E'
-        Mutlist = np.array([''.join(line.split(' ')[-3:]) for line in Mutlist])
+        # ddg_predictions.out records look like 'ddG: <descriptor> <total> ...', where the
+        # descriptor is the concatenated pose numbered mutation. that string is exactly the
+        # first field of each List_Mutations_readable.txt line, so the two can be matched on
+        # it. the file opens with a column header that is itself a 'ddG:' line
+        # ('ddG: description total fa_atr ...'), so rows whose energy field does not parse
+        # are skipped rather than counted -- this identifies the header by its content
+        # instead of assuming it is always exactly the first line
+        EnergyByKey = {}
+        for line in Energylist:
+            fields = line.split()
+            if len(fields) >= 3 and fields[0].startswith('ddG'):
+                try:
+                    # convert energy from kcal/mol to kj/mol
+                    EnergyByKey[fields[1]] = float(fields[2])*4.1840
+                except ValueError:
+                    continue
+
+        # 'K3EK3E is K 4 E' -> key 'K3EK3E', reported as 'K4E' in the original numbering
+        MutKeys, NameByKey = [], {}
+        for line in Mutlist:
+            fields = line.split()
+            if len(fields) >= 5 and fields[1] == 'is':
+                MutKeys.append(fields[0])
+                NameByKey[fields[0]] = ''.join(fields[-3:])
         # keep track of total amount of expected outputs
-        Total_expected += len(Mutlist)
+        Total_expected += len(MutKeys)
 
-        print('energy', Energylist, 'muts', Mutlist)
+        # report any mutation that has no energy, by name
+        print('Found {} mutations'.format(len(EnergyByKey)))
+        Missing = [k for k in MutKeys if k not in EnergyByKey]
+        if Missing:
+            print('WARNING: {} of the {} mutations in {} have no energy in '
+                  'ddg_predictions.out:'.format(len(Missing), len(MutKeys), MutlistLoc))
+            print('  ' + ', '.join(NameByKey[k] for k in Missing[:20])
+                  + (', ...' if len(Missing) > 20 else ''))
+            print('These are left out of the results. The remaining mutations are unaffected,')
+            print('because mutations and energies are matched on the mutation, not on order.')
 
-        # give warning if the two are not the same length
-        print('Found {} mutations'.format(len(Energylist)))
-        if len(Mutlist) != len(Energylist):
-            print('WARNING: the number of energies in ddg_predictions.out '
-                  'do not match the number of mutations in {}:'.format(MutlistLoc))
-            print('Only the mutations for which energy values have been calculated will be reported')
-            print('Input number of mutations: {}'.format(len(Mutlist)))
-            print('Output number of mutations: {}'.format(len(Energylist)))
-        # keep only mutation list entries with matching energy output, append both to full list
-        Mutlist = Mutlist[0:len(Energylist)]
-        Mutlist_full = np.append(Mutlist_full, Mutlist)
-        Energylist_full = np.append(Energylist_full, Energylist)
-        SDlist_full = np.append(SDlist_full, np.zeros(len(Energylist)))
+        # append the mutations that do have an energy, in the order they were requested
+        Shared = [k for k in MutKeys if k in EnergyByKey]
+        Mutlist_full = np.append(Mutlist_full, [NameByKey[k] for k in Shared])
+        Energylist_full = np.append(Energylist_full, [EnergyByKey[k] for k in Shared])
+        SDlist_full = np.append(SDlist_full, np.zeros(len(Shared)))
 
     print('\n')
     # find indices where energy is below cutoff, and find indices of best per position

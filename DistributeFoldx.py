@@ -158,16 +158,19 @@ def FindBestPerPos(mutationlist, energylist):
     for ind, (mut, kj) in enumerate(zip(mutationlist, energylist)):
         # only take relevant part
         mut = mut[0:-1]
-        # if this is new residue or last entry, save indice of current best
-        if mut != currentres or ind == len(energylist) - 1:
+        # if this is a new residue, save the indice of the best of the previous one
+        if mut != currentres:
             # skip if no best residue has yet been saved
-            if not (currentres == '' or currentbest == ''):
+            if currentbest != '':
                 bestperpos_out.append(currentbest[0])
             currentres = mut
             currentbest = [ind, kj]
         # if this is the same residue, check if new mutation is better than best
         elif kj < currentbest[-1]:
             currentbest = [ind, kj]
+    # flush the final position, which has no following residue to trigger the append
+    if currentbest != '':
+        bestperpos_out.append(currentbest[0])
     # return list of best per residue
     return bestperpos_out
 
@@ -423,28 +426,41 @@ if WhichPhaseAreWeIn == 'Phase2' and DirectoriesPresent:
             print('{} is empty'.format(Energyfile))
             continue
 
-        # obtain just the SD and Energy entries from .fxout file, and convert energy from kcal/mol to kj/mol
-        Energylist = np.array([line.split('\t', 3)[1:3] for line in Energylist if NamePDBnoExtension in line])
-        Energylist = Energylist.astype(float)*4.1840
-        # format entries in mutation list from '1 K 4 E to 'K4E'
-        Mutlist = np.array([''.join(line.split(' ')[1:]) for line in Mutlist])
+        # index the energies by the mutant number FoldX appends to the structure name.
+        # the first tab separated field has to match '<pdb>_<i>' exactly: testing whether
+        # the basename occurs anywhere in the line also picks up the header, which reads
+        # 'PDB file analysed: <pdb>.pdb'
+        EnergyByIndex = {}
+        MutantPattern = re.compile(r'^{}_(\d+)$'.format(re.escape(NamePDBnoExtension)))
+        for line in Energylist:
+            fields = line.split('\t')
+            hit = MutantPattern.match(fields[0])
+            if hit and len(fields) >= 3:
+                # convert energy from kcal/mol to kj/mol
+                EnergyByIndex[int(hit.group(1))] = (float(fields[1])*4.1840, float(fields[2])*4.1840)
+
+        # format entries in mutation list from '1 K 4 E' to 'K4E', keyed on the leading
+        # number so they can be matched to the energies by identity instead of position
+        MutByIndex = {int(line.split()[0]): ''.join(line.split()[1:]) for line in Mutlist if line.split()}
         # keep track of total amount of expected outputs
-        Total_expected += len(Mutlist)
+        Total_expected += len(MutByIndex)
 
-        # give warning if the two are not the same length
-        print('Found {} mutations'.format(len(Energylist)))
-        if len(Mutlist) != len(Energylist):
-            print('WARNING: the number of energies in {} '
-                  'do not match the number of mutations in {}:'.format(FoldxEnergyFile, MutlistLoc))
-            print('Only the mutations for which energy values have been calculated will be reported')
-            print('Input number of mutations: {}'.format(len(Mutlist)))
-            print('Output number of mutations: {}'.format(len(Energylist)))
+        # report any mutation that has no energy, by name
+        print('Found {} mutations'.format(len(EnergyByIndex)))
+        Missing = sorted(set(MutByIndex) - set(EnergyByIndex))
+        if Missing:
+            print('WARNING: {} of the {} mutations in {} have no energy in {}:'.format(
+                  len(Missing), len(MutByIndex), MutlistLoc, FoldxEnergyFile))
+            print('  ' + ', '.join('{} (#{})'.format(MutByIndex[i], i) for i in Missing[:20])
+                  + (', ...' if len(Missing) > 20 else ''))
+            print('These are left out of the results. The remaining mutations are unaffected,')
+            print('because mutations and energies are matched on the mutant number, not on order.')
 
-        # keep only mutation list entries with matching energy output, append both to full list
-        Mutlist = Mutlist[0:len(Energylist)]
-        Mutlist_full = np.append(Mutlist_full, Mutlist)
-        Energylist_full = np.append(Energylist_full, Energylist[:, 1])
-        SDlist_full = np.append(SDlist_full, Energylist[:, 0])
+        # append the mutations that do have an energy, in the order they were calculated
+        Shared = sorted(set(MutByIndex) & set(EnergyByIndex))
+        Mutlist_full = np.append(Mutlist_full, [MutByIndex[i] for i in Shared])
+        Energylist_full = np.append(Energylist_full, [EnergyByIndex[i][1] for i in Shared])
+        SDlist_full = np.append(SDlist_full, [EnergyByIndex[i][0] for i in Shared])
 
     print('\n')
     # find indices where energy is below cutoff, and find infices of best per position
