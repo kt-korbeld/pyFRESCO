@@ -396,15 +396,17 @@ if WhichPhaseAreWeIn == 'Phase1':
         with open(os.path.join(Subdirectory_name, 'list.txt'), "w") as pdblist:
             pdblist.write(NamePDBFile)
 
+        # the mutations that actually land in this directory. deriving the 'total'
+        # header from the slice keeps it correct in every case, including when the
+        # mutations divide evenly over the directories
+        MutationsHere = MutatedProteinList[StartMutationRange:EndMutationRange]
+
         # create 'RosettaFormatMutations.mut file with list of mutants
         with open(os.path.join(Subdirectory_name, 'RosettaFormatMutations.mut'), "w") as mutlist:
             # write total number of mutations to file
-            if directory_nr == NumberOfSubdirectories:
-                mutlist.write('total {}\n'.format(len(Strands)*NumberInLastDirectory))
-            else:
-                mutlist.write('total {}\n'.format(len(Strands)*MutationsPerDirectory))
+            mutlist.write('total {}\n'.format(len(Strands)*len(MutationsHere)))
             #for loop going over each mutation
-            for mut in MutatedProteinList[StartMutationRange:EndMutationRange]:
+            for mut in MutationsHere:
                 # subtract the start from the residue number to get new residue numbers
                 newres = [str(int(mut[1])-int(start)+1) for start in Strandstarts]
                 # for mutation 'K4E' with 3 subunits starting at 2, make [3, 'K 3 E', 'K 3 E', 'K 3 E']
@@ -415,7 +417,7 @@ if WhichPhaseAreWeIn == 'Phase1':
         # create 'List_Mutations_readable.txt' with list of mutants
         with open(os.path.join(Subdirectory_name, 'List_Mutations_readable.txt'), "w") as readlist:
             #for loop going over each mutation
-            for mut in MutatedProteinList[StartMutationRange:EndMutationRange]:
+            for mut in MutationsHere:
                 # subtract the start from the residue number to get new residue numbers
                 newres = [str(int(mut[1])-int(start)+1) for start in Strandstarts]
                 # for mutation 'K4E' with 3 subunits starting at 2, make 'K3EK3EK3E is K 4 E'
