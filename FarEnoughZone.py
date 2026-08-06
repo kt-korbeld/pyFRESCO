@@ -7,7 +7,7 @@ def get_chainIDs(selection):
     chainids = []
     for res in selection.residues.chainIDs:
         if len(set(res)) != 1:
-            raise Error
+            raise ValueError('residue spans more than one chainID: {}'.format(set(res)))
         else:
             chainid = list(set(res))[0]
         chainids.append(chainid)
@@ -44,6 +44,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     inputpdb = args.pdb
     distance = args.distance
+    residue = args.residue
     selection= args.customsel
     output = args.output
 
