@@ -188,16 +188,19 @@ def FindBestPerPos(mutationlist, energylist):
     for ind, (mut, kj) in enumerate(zip(mutationlist, energylist)):
         # only take relevant part
         mut = mut[0:-1]
-        # if this is new residue or last entry, save index of current best
-        if mut != currentres or ind == len(energylist) - 1:
+        # if this is a new residue, save the index of the best of the previous one
+        if mut != currentres:
             # skip if no best residue has yet been saved
-            if not (currentres == '' or currentbest == ''):
+            if currentbest != '':
                 bestperpos_out.append(currentbest[0])
             currentres = mut
             currentbest = [ind, kj]
         # if this is the same residue, check if new mutation is better than best
         elif kj < currentbest[-1]:
             currentbest = [ind, kj]
+    # flush the final position, which has no following residue to trigger the append
+    if currentbest != '':
+        bestperpos_out.append(currentbest[0])
     # return list of best per residue
     return bestperpos_out
 
