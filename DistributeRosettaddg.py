@@ -508,14 +508,19 @@ if WhichPhaseAreWeIn == 'Phase2' and DirectoriesPresent:
         # ddg_predictions.out records look like 'ddG: <descriptor> <total> ...', where the
         # descriptor is the concatenated pose numbered mutation. that string is exactly the
         # first field of each List_Mutations_readable.txt line, so the two can be matched on
-        # it. no line is skipped up front: dropping the first record shifts every mutation
-        # onto the wrong energy whenever that record is a ddG line rather than a header
+        # it. the file opens with a column header that is itself a 'ddG:' line
+        # ('ddG: description total fa_atr ...'), so rows whose energy field does not parse
+        # are skipped rather than counted -- this identifies the header by its content
+        # instead of assuming it is always exactly the first line
         EnergyByKey = {}
         for line in Energylist:
             fields = line.split()
             if len(fields) >= 3 and fields[0].startswith('ddG'):
-                # convert energy from kcal/mol to kj/mol
-                EnergyByKey[fields[1]] = float(fields[2])*4.1840
+                try:
+                    # convert energy from kcal/mol to kj/mol
+                    EnergyByKey[fields[1]] = float(fields[2])*4.1840
+                except ValueError:
+                    continue
 
         # 'K3EK3E is K 4 E' -> key 'K3EK3E', reported as 'K4E' in the original numbering
         MutKeys, NameByKey = [], {}
