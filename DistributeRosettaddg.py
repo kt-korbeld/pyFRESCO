@@ -505,29 +505,44 @@ if WhichPhaseAreWeIn == 'Phase2' and DirectoriesPresent:
             print('{} is empty'.format(Energyfile))
             continue
 
-        # skip first line, get Energy entries from the energy file, and convert energy from kcal/mol to kj/mol
-        Energylist = np.array([line.split()[2] for line in Energylist[1:] if 'ddG' in line])
-        Energylist = Energylist.astype(float)*4.1840
-        # format entries in mutation list from '1 K 4 E to 'K4E'
-        Mutlist = np.array([''.join(line.split(' ')[-3:]) for line in Mutlist])
+        # ddg_predictions.out records look like 'ddG: <descriptor> <total> ...', where the
+        # descriptor is the concatenated pose numbered mutation. that string is exactly the
+        # first field of each List_Mutations_readable.txt line, so the two can be matched on
+        # it. no line is skipped up front: dropping the first record shifts every mutation
+        # onto the wrong energy whenever that record is a ddG line rather than a header
+        EnergyByKey = {}
+        for line in Energylist:
+            fields = line.split()
+            if len(fields) >= 3 and fields[0].startswith('ddG'):
+                # convert energy from kcal/mol to kj/mol
+                EnergyByKey[fields[1]] = float(fields[2])*4.1840
+
+        # 'K3EK3E is K 4 E' -> key 'K3EK3E', reported as 'K4E' in the original numbering
+        MutKeys, NameByKey = [], {}
+        for line in Mutlist:
+            fields = line.split()
+            if len(fields) >= 5 and fields[1] == 'is':
+                MutKeys.append(fields[0])
+                NameByKey[fields[0]] = ''.join(fields[-3:])
         # keep track of total amount of expected outputs
-        Total_expected += len(Mutlist)
+        Total_expected += len(MutKeys)
 
-        print('energy', Energylist, 'muts', Mutlist)
+        # report any mutation that has no energy, by name
+        print('Found {} mutations'.format(len(EnergyByKey)))
+        Missing = [k for k in MutKeys if k not in EnergyByKey]
+        if Missing:
+            print('WARNING: {} of the {} mutations in {} have no energy in '
+                  'ddg_predictions.out:'.format(len(Missing), len(MutKeys), MutlistLoc))
+            print('  ' + ', '.join(NameByKey[k] for k in Missing[:20])
+                  + (', ...' if len(Missing) > 20 else ''))
+            print('These are left out of the results. The remaining mutations are unaffected,')
+            print('because mutations and energies are matched on the mutation, not on order.')
 
-        # give warning if the two are not the same length
-        print('Found {} mutations'.format(len(Energylist)))
-        if len(Mutlist) != len(Energylist):
-            print('WARNING: the number of energies in ddg_predictions.out '
-                  'do not match the number of mutations in {}:'.format(MutlistLoc))
-            print('Only the mutations for which energy values have been calculated will be reported')
-            print('Input number of mutations: {}'.format(len(Mutlist)))
-            print('Output number of mutations: {}'.format(len(Energylist)))
-        # keep only mutation list entries with matching energy output, append both to full list
-        Mutlist = Mutlist[0:len(Energylist)]
-        Mutlist_full = np.append(Mutlist_full, Mutlist)
-        Energylist_full = np.append(Energylist_full, Energylist)
-        SDlist_full = np.append(SDlist_full, np.zeros(len(Energylist)))
+        # append the mutations that do have an energy, in the order they were requested
+        Shared = [k for k in MutKeys if k in EnergyByKey]
+        Mutlist_full = np.append(Mutlist_full, [NameByKey[k] for k in Shared])
+        Energylist_full = np.append(Energylist_full, [EnergyByKey[k] for k in Shared])
+        SDlist_full = np.append(SDlist_full, np.zeros(len(Shared)))
 
     print('\n')
     # find indices where energy is below cutoff, and find indices of best per position
