@@ -1,7 +1,8 @@
 # pyFRESCO
 This is a python implementation of the DistributeFoldx/DistributeRosetta/FarEnoughZone scripts written by Hein Wijma.
+The original scripts for FRESCO can be found [here](https://github.com/hjwijma/fresco).
 This implementation includes some quality of life improvements that reduce the amounts of inputs needed, 
-standardizes the input format between the two scrips, and includes a few additional warnings and error messages. 
+standardizes the input format between the two scripts, and includes a few additional warnings and error messages. 
 This program is intended to distribute the calculation of a large number of mutations by FoldX and Rosetta ddg_monomer.
 For the first phase of preparing the files for calculations, use a command like:
 
