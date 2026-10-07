@@ -12,6 +12,15 @@ LEGACY = False
 # provides additional information about each step if set to True
 DEBUG = False
 
+# The canonical FRESCO result names are PLURAL ('MutationsEnergies_'): that is what
+# DistributeFoldX.c/DistributeRosettaddg.c write, what the published protocol's combine
+# step reads, and what this script's own console output already claims. These scripts
+# previously wrote the singular 'MutationEnergies_', so the combine step silently found
+# nothing. Set this to True to ALSO write the singular names, for anyone whose own
+# downstream scripts came to depend on them.
+LEGACY_OUTPUT_NAMES = False
+
+
 # ============================================Define functions =========================================================
 # ======================================================================================================================
 
@@ -68,6 +77,23 @@ def CheckError(conditional, errormessage):
     if conditional:
         print('-------- ERROR -------- '+errormessage)
         sys.exit()
+
+
+def write_result_table(name, array, sortedarray, header):
+    '''
+    Write one result table under the canonical plural name, and optionally also under
+    the legacy singular name. Passing array=None writes empty files.
+    '''
+    stems = ['MutationsEnergies_']
+    if LEGACY_OUTPUT_NAMES:
+        stems.append('MutationEnergies_')
+    for stem in stems:
+        for suffix, data in (('.tab', array), ('_SortedByEnergy.tab', sortedarray)):
+            path = stem + name + suffix
+            if data is None:
+                open(path, "a").close()
+            else:
+                np.savetxt(path, data, fmt='%s%9s%9s', header=header, comments='')
 
 
 def CheckFileExtension(name, extension):
@@ -474,8 +500,7 @@ if WhichPhaseAreWeIn == 'Phase2' and DirectoriesPresent:
                              [Completelist, BelowCutoff, BestPerPos, BestPerPosBelowCutoff]):
         # create empty file and skip if indices are empty
         if len(indices) == 0:
-            open('MutationEnergies_' + name + '.tab', "a").close()
-            open('MutationEnergies_' + name + '_SortedByEnergy.tab', "a").close()
+            write_result_table(name, None, None, '')
             continue
         # create array with mut name, energy, and SD
         fullarray = np.vstack((Mutlist_full[indices],
@@ -485,10 +510,7 @@ if WhichPhaseAreWeIn == 'Phase2' and DirectoriesPresent:
         fullarraysorted = fullarray[Energylist_full[indices].argsort()]
         # write both to file
         header = 'Below are the mutations and the change in stability and SD from 5 calculations, all in kJ mol -1'
-        np.savetxt('MutationEnergies_'+name+'.tab', fullarray,
-                   fmt='%s%9s%9s', header=header, comments='')
-        np.savetxt('MutationEnergies_'+name+'_SortedByEnergy.tab', fullarraysorted,
-                   fmt='%s%9s%9s', header=header, comments='')
+        write_result_table(name, fullarray, fullarraysorted, header)
 
     NumberOfMutationsCollectedBelowCutOff = len(BelowCutoff)
     NumberOfMutationsCollectedPerPosition = len(BestPerPos)
